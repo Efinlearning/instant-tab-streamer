@@ -4,6 +4,10 @@ let socket = null;
 let streamActive = false;
 let mediaRecorder = null;
 let captureStream = null;
+let reconnectInterval = null;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 5;
+const RECONNECT_DELAY = 3000; // 3 seconds
 
 // Connect to WebSocket server
 function connectWebSocket() {
@@ -18,6 +22,14 @@ function connectWebSocket() {
     console.log('WebSocket connected');
     chrome.action.setBadgeText({ text: 'ON' });
     chrome.action.setBadgeBackgroundColor({ color: '#4CAF50' });
+    reconnectAttempts = 0;
+    
+    // If already opened, try to start capturing the current tab
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs && tabs[0] && tabs[0].id) {
+        startCapture(tabs[0].id);
+      }
+    });
   };
   
   socket.onclose = () => {
@@ -25,6 +37,13 @@ function connectWebSocket() {
     stopCapture();
     chrome.action.setBadgeText({ text: 'OFF' });
     chrome.action.setBadgeBackgroundColor({ color: '#F44336' });
+    
+    // Try to reconnect if not at max attempts
+    if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+      reconnectAttempts++;
+      console.log(`Attempting to reconnect (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
+      setTimeout(connectWebSocket, RECONNECT_DELAY);
+    }
   };
   
   socket.onerror = (error) => {
@@ -43,6 +62,7 @@ async function startCapture(tabId) {
     // Connect to WebSocket if not already connected
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       connectWebSocket();
+      return; // Will be called again by onopen handler
     }
 
     // Capture the tab
@@ -116,25 +136,37 @@ function stopCapture() {
   console.log('Tab capture stopped');
 }
 
-// Listen for messages from popup
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.action === 'START_CAPTURE') {
-    startCapture(message.tabId);
-    sendResponse({ success: true });
-  } else if (message.action === 'STOP_CAPTURE') {
+// Initialize connection when extension loads
+connectWebSocket();
+
+// Listen for clicks on the extension icon
+chrome.action.onClicked.addListener((tab) => {
+  if (streamActive) {
     stopCapture();
-    sendResponse({ success: true });
-  } else if (message.action === 'GET_STATUS') {
+  } else if (tab.id) {
+    startCapture(tab.id);
+  }
+});
+
+// Listen for tab changes to stop capture if necessary
+chrome.tabs.onActivated.addListener(() => {
+  if (streamActive) {
+    stopCapture();
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs && tabs[0] && tabs[0].id) {
+        startCapture(tabs[0].id);
+      }
+    });
+  }
+});
+
+// Listen for messages from other extension components
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === 'GET_STATUS') {
     sendResponse({
       isConnected: socket && socket.readyState === WebSocket.OPEN,
       isStreaming: streamActive
     });
-  } else if (message.action === 'CONNECT_WEBSOCKET') {
-    connectWebSocket();
-    sendResponse({ success: true });
   }
   return true; // Required for async sendResponse
 });
-
-// Initialize connection when extension loads
-connectWebSocket();

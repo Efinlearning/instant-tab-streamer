@@ -1,73 +1,62 @@
-# Welcome to your Lovable project
 
-## Project info
+# Tab Stream Capture Project
 
-**URL**: https://lovable.dev/projects/016cd6c6-ba6a-4e7d-ab62-8a3c641cbf9f
+This project consists of a Chrome extension that automatically captures tab content and streams it to a web application through WebSockets.
 
-## How can I edit this code?
+## Project Structure
 
-There are several ways of editing your application.
+- `/public/extension/` - Chrome extension files
+- `/src/` - Web application source code
+- `server.js` - WebSocket server for streaming
 
-**Use Lovable**
+## Setup Instructions
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/016cd6c6-ba6a-4e7d-ab62-8a3c641cbf9f) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
+### 1. Install Dependencies
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+npm install
 ```
 
-**Edit a file directly in GitHub**
+### 2. Start the Servers
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+The project includes both a WebSocket server for streaming and a Vite development server for the web application. You can start both with a single command:
 
-**Use GitHub Codespaces**
+```sh
+npm run start
+```
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+This will start both servers:
+- WebSocket server on port 8080
+- Web application on port 3000
 
-## What technologies are used for this project?
+### 3. Install the Chrome Extension
 
-This project is built with:
+1. Open Chrome and navigate to `chrome://extensions/`
+2. Enable "Developer mode" in the top-right corner
+3. Click "Load unpacked" and select the `public/extension` folder
+4. The extension icon should appear in your toolbar
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+## Usage
 
-## How can I deploy this project?
+1. Navigate to the web application at http://localhost:3000
+2. Click the extension icon in your browser toolbar to start/stop streaming
+3. The current tab will be captured and streamed to the web application automatically
 
-Simply open [Lovable](https://lovable.dev/projects/016cd6c6-ba6a-4e7d-ab62-8a3c641cbf9f) and click on Share -> Publish.
+## How It Works
 
-## Can I connect a custom domain to my Lovable project?
+- The Chrome extension uses the `tabCapture` API to capture the current tab
+- Captured media is sent via WebSocket to the server
+- The server broadcasts the stream to all connected clients
+- The web application receives and displays the stream
 
-Yes it is!
+## Troubleshooting
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+- If the connection fails, check that both servers are running
+- Make sure you're on a tab that can be captured (some tabs like chrome:// URLs cannot be captured)
+- Check the browser console for error messages
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+## Development
+
+- Web application is built with React, TypeScript, and Tailwind CSS
+- Extension uses Chrome Extensions Manifest V3
+- Communication happens via WebSockets (ws://localhost:8080)
