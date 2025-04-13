@@ -1,4 +1,5 @@
-const { spawn } = require('child_process');
+
+import { spawn } from 'child_process';
 
 // Start the WebSocket server
 const server = spawn('node', ['server.js'], {

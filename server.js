@@ -1,6 +1,6 @@
 
-const WebSocket = require('ws');
-const http = require('http');
+import { WebSocketServer } from 'ws';
+import http from 'http';
 
 // Create HTTP server
 const server = http.createServer((req, res) => {
@@ -9,7 +9,7 @@ const server = http.createServer((req, res) => {
 });
 
 // Create WebSocket server
-const wss = new WebSocket.Server({ server });
+const wss = new WebSocketServer({ server });
 
 // Store connections
 const clients = new Set();
@@ -23,7 +23,7 @@ wss.on('connection', (ws) => {
   ws.on('message', (message) => {
     // Forward the message to all connected clients except the sender
     for (const client of clients) {
-      if (client !== ws && client.readyState === WebSocket.OPEN) {
+      if (client !== ws && client.readyState === WebSocketServer.OPEN) {
         client.send(message);
       }
     }
