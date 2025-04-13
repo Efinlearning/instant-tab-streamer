@@ -1,4 +1,3 @@
-
 const { spawn } = require('child_process');
 
 // Start the WebSocket server
@@ -8,7 +7,7 @@ const server = spawn('node', ['server.js'], {
 });
 
 // Start the Vite dev server
-const client = spawn('npx', ['vite', '--host', '::', '--port', '3000'], {
+const client = spawn('npx', ['vite', '--host', '::', '--port', '8080'], {
   stdio: 'inherit',
   shell: true
 });
