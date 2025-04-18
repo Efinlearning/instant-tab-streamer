@@ -69,68 +69,61 @@ async function startCapture(tabId) {
     console.log('Attempting to capture tab...');
     
     // Get tab media stream using chrome.tabCapture API
-    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-      if (!tabs || !tabs[0]) {
-        console.error('No active tab found');
-        return;
-      }
-      
-      chrome.tabCapture.getMediaStream(
-        {
-          video: true,
-          audio: true,
-          videoConstraints: {
-            mandatory: {
-              minWidth: 1280,
-              maxWidth: 1920,
-              minHeight: 720,
-              maxHeight: 1080,
-              maxFrameRate: 30
-            }
+    chrome.tabCapture.getMediaStream(
+      {
+        video: true,
+        audio: true,
+        videoConstraints: {
+          mandatory: {
+            minWidth: 1280,
+            maxWidth: 1920,
+            minHeight: 720,
+            maxHeight: 1080,
+            maxFrameRate: 30
           }
-        },
-        function(stream) {
-          if (!stream) {
-            console.error('Failed to get media stream');
-            return;
-          }
-          
-          captureStream = stream;
-          
-          // Create media recorder
-          mediaRecorder = new MediaRecorder(captureStream, {
-            mimeType: 'video/webm;codecs=vp9',
-            videoBitsPerSecond: 2500000
-          });
-          
-          mediaRecorder.ondataavailable = (event) => {
-            if (event.data.size > 0 && socket && socket.readyState === WebSocket.OPEN) {
-              socket.send(event.data);
-            }
-          };
-          
-          mediaRecorder.onstop = () => {
-            streamActive = false;
-            if (socket && socket.readyState === WebSocket.OPEN) {
-              socket.send(JSON.stringify({ type: 'stream-stopped' }));
-            }
-            chrome.action.setBadgeText({ text: 'ON' });
-          };
-          
-          // Start recording
-          mediaRecorder.start(100); // Send data every 100ms
-          streamActive = true;
-          chrome.action.setBadgeText({ text: 'REC' });
-          chrome.action.setBadgeBackgroundColor({ color: '#F44336' });
-          
-          if (socket && socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({ type: 'stream-started', tabId }));
-          }
-          
-          console.log('Tab capture started');
         }
-      );
-    });
+      },
+      function(stream) {
+        if (!stream) {
+          console.error('Failed to get media stream');
+          return;
+        }
+        
+        captureStream = stream;
+        
+        // Create media recorder
+        mediaRecorder = new MediaRecorder(captureStream, {
+          mimeType: 'video/webm;codecs=vp9',
+          videoBitsPerSecond: 2500000
+        });
+        
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0 && socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(event.data);
+          }
+        };
+        
+        mediaRecorder.onstop = () => {
+          streamActive = false;
+          if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: 'stream-stopped' }));
+          }
+          chrome.action.setBadgeText({ text: 'ON' });
+        };
+        
+        // Start recording
+        mediaRecorder.start(100); // Send data every 100ms
+        streamActive = true;
+        chrome.action.setBadgeText({ text: 'REC' });
+        chrome.action.setBadgeBackgroundColor({ color: '#F44336' });
+        
+        if (socket && socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({ type: 'stream-started', tabId }));
+        }
+        
+        console.log('Tab capture started');
+      }
+    );
   } catch (error) {
     console.error('Error starting capture:', error);
   }
