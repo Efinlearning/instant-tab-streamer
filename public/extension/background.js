@@ -73,11 +73,19 @@ function startCapture(tabId) {
 
     console.log('Attempting to capture tab...');
     
-    // Use chrome.tabCapture.captureTab API (the correct API for Manifest V3)
-    chrome.tabCapture.captureTab(
+    // Using the correct Chrome tabCapture API
+    chrome.tabCapture.capture(
       {
         audio: true,
-        video: true
+        video: true,
+        videoConstraints: {
+          mandatory: {
+            minWidth: 1280,
+            minHeight: 720,
+            maxWidth: 1920,
+            maxHeight: 1080
+          }
+        }
       },
       (stream) => {
         if (!stream) {

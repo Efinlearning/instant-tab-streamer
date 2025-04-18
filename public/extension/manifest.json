@@ -5,7 +5,6 @@
   "version": "1.0",
   "description": "Automatically captures the current tab and streams it to a web application",
   "permissions": [
-    "tabCapture",
     "tabs",
     "activeTab"
   ],

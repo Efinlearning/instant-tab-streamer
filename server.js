@@ -19,13 +19,20 @@ wss.on('connection', (ws) => {
   console.log('Client connected');
   clients.add(ws);
 
+  // Send confirmation message on connection
+  ws.send(JSON.stringify({ type: 'connection-success' }));
+
   // Forward messages to all other clients
   ws.on('message', (message) => {
-    // Forward the message to all connected clients except the sender
-    for (const client of clients) {
-      if (client !== ws && client.readyState === 1) { // WebSocket.OPEN = 1
-        client.send(message);
+    try {
+      // Forward the message to all connected clients except the sender
+      for (const client of clients) {
+        if (client !== ws && client.readyState === 1) { // WebSocket.OPEN = 1
+          client.send(message);
+        }
       }
+    } catch (error) {
+      console.error('Error forwarding message:', error);
     }
   });
 
@@ -35,12 +42,29 @@ wss.on('connection', (ws) => {
     clients.delete(ws);
   });
 
-  // Send initial connection success message
-  ws.send(JSON.stringify({ type: 'connection-success' }));
+  // Handle errors
+  ws.on('error', (error) => {
+    console.error('WebSocket error:', error);
+    clients.delete(ws);
+  });
+});
+
+// Handle server errors
+wss.on('error', (error) => {
+  console.error('WebSocket server error:', error);
 });
 
 // Start server
 const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => {
   console.log(`WebSocket server running on http://localhost:${PORT}`);
+});
+
+// Handle clean shutdown
+process.on('SIGINT', () => {
+  console.log('Shutting down WebSocket server...');
+  wss.close(() => {
+    console.log('WebSocket server closed');
+    process.exit(0);
+  });
 });
