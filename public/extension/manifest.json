@@ -4,7 +4,14 @@
   "name": "Tab Stream Capture",
   "version": "1.0",
   "description": "Automatically captures the current tab and streams it to a web application",
-  "permissions": ["tabCapture", "tabs", "activeTab"],
+  "permissions": [
+  "tabCapture",
+  "tabs",
+  "activeTab",
+  "scripting"
+  ],
+  "host_permissions": ["<all_urls>"],
+
   "action": {
     "default_icon": {
       "16": "icon16.png",
