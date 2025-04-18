@@ -8,7 +8,6 @@ let reconnectInterval = null;
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 5;
 const RECONNECT_DELAY = 3000; // 3 seconds
-let autoConnectTimer = null;
 
 // Connect to WebSocket server
 function connectWebSocket() {
@@ -59,7 +58,7 @@ function connectWebSocket() {
 }
 
 // Start tab capture
-async function startCapture(tabId) {
+function startCapture(tabId) {
   if (streamActive) {
     console.log('Stream already active');
     return;
@@ -74,61 +73,56 @@ async function startCapture(tabId) {
 
     console.log('Attempting to capture tab...');
     
-    // Use the correct tabCapture API
-    chrome.tabCapture.capture(
-  {
-    audio: true,
-    video: true,
-    videoConstraints: {
-      mandatory: {
-        minWidth: 1280,
-        maxWidth: 1920,
-        minHeight: 720,
-        maxHeight: 1080,
-        maxFrameRate: 30
+    // Use chrome.tabCapture.captureTab API (the correct API for Manifest V3)
+    chrome.tabCapture.captureTab(
+      {
+        audio: true,
+        video: true
+      },
+      (stream) => {
+        if (!stream) {
+          console.error('Failed to get media stream');
+          return;
+        }
+        captureStream = stream;
+
+        // Create media recorder
+        mediaRecorder = new MediaRecorder(captureStream, {
+          mimeType: 'video/webm;codecs=vp9',
+          videoBitsPerSecond: 2500000
+        });
+
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0 && socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(event.data);
+          }
+        };
+
+        mediaRecorder.onstop = () => {
+          streamActive = false;
+          if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: 'stream-stopped' }));
+          }
+          chrome.action.setBadgeText({ text: 'ON' });
+        };
+
+        // Start recording
+        mediaRecorder.start(100);
+        streamActive = true;
+        chrome.action.setBadgeText({ text: 'REC' });
+        chrome.action.setBadgeBackgroundColor({ color: '#F44336' });
+
+        if (socket && socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({ type: 'stream-started', tabId }));
+        }
+
+        console.log('Tab capture started');
       }
-    }
-  },
-  function(stream) {
-    if (!stream) {
-      console.error('Failed to get media stream');
-      return;
-    }
-    captureStream = stream;
-
-    // Create media recorder
-    mediaRecorder = new MediaRecorder(captureStream, {
-      mimeType: 'video/webm;codecs=vp9',
-      videoBitsPerSecond: 2500000
-    });
-
-    mediaRecorder.ondataavailable = (event) => {
-      if (event.data.size > 0 && socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(event.data);
-      }
-    };
-
-    mediaRecorder.onstop = () => {
-      streamActive = false;
-      if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({ type: 'stream-stopped' }));
-      }
-      chrome.action.setBadgeText({ text: 'ON' });
-    };
-
-    // Start recording
-    mediaRecorder.start(100);
-    streamActive = true;
-    chrome.action.setBadgeText({ text: 'REC' });
-    chrome.action.setBadgeBackgroundColor({ color: '#F44336' });
-
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({ type: 'stream-started', tabId }));
-    }
-
-    console.log('Tab capture started');
+    );
+  } catch (error) {
+    console.error('Error starting capture:', error);
   }
-);
+}
 
 // Stop tab capture
 function stopCapture() {
@@ -145,35 +139,10 @@ function stopCapture() {
   console.log('Tab capture stopped');
 }
 
-// Function to auto-connect and start capturing
-function setupAutoConnect() {
-  // Clear any existing timer
-  if (autoConnectTimer) {
-    clearInterval(autoConnectTimer);
-  }
-  
-  // Try to connect immediately
-  connectWebSocket();
-  
-  // And then check every 10 seconds if we need to reconnect
-  autoConnectTimer = setInterval(() => {
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
-      connectWebSocket();
-    } else if (!streamActive) {
-      // If connected but not streaming, try to start streaming
-      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        if (tabs && tabs[0] && tabs[0].id) {
-          startCapture(tabs[0].id);
-        }
-      });
-    }
-  }, 10000); // Check every 10 seconds
-}
+// Connect to WebSocket and start streaming on extension startup
+connectWebSocket();
 
-// Initialize auto-connection and capture when extension loads
-setupAutoConnect();
-
-// Listen for clicks on the extension icon
+// Listen for clicks on the extension icon (toggle streaming)
 chrome.action.onClicked.addListener((tab) => {
   if (streamActive) {
     stopCapture();
@@ -182,7 +151,7 @@ chrome.action.onClicked.addListener((tab) => {
   }
 });
 
-// Listen for tab changes to stop capture if necessary
+// Listen for tab changes to restart capture on new tab
 chrome.tabs.onActivated.addListener(() => {
   if (streamActive) {
     stopCapture();
@@ -194,26 +163,16 @@ chrome.tabs.onActivated.addListener(() => {
   }
 });
 
-// Listen for messages from other extension components
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.action === 'GET_STATUS') {
-    sendResponse({
-      isConnected: socket && socket.readyState === WebSocket.OPEN,
-      isStreaming: streamActive
-    });
-  } else if (message.action === 'CONNECT_WEBSOCKET') {
+// Check connection status periodically and reconnect if needed
+setInterval(() => {
+  if (!socket || socket.readyState !== WebSocket.OPEN) {
     connectWebSocket();
-    sendResponse({ success: true });
-  } else if (message.action === 'START_CAPTURE') {
-    if (message.tabId) {
-      startCapture(message.tabId);
-      sendResponse({ success: true });
-    } else {
-      sendResponse({ success: false, error: 'No tab ID provided' });
-    }
-  } else if (message.action === 'STOP_CAPTURE') {
-    stopCapture();
-    sendResponse({ success: true });
+  } else if (!streamActive) {
+    // If connected but not streaming, try to start streaming
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs && tabs[0] && tabs[0].id) {
+        startCapture(tabs[0].id);
+      }
+    });
   }
-  return true; // Required for async sendResponse
-});
+}, 5000); // Check every 5 seconds

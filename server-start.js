@@ -7,8 +7,8 @@ const server = spawn('node', ['server.js'], {
   shell: true
 });
 
-// Start the Vite dev server
-const client = spawn('npx', ['vite', '--host', '::', '--port', '8080'], {
+// Start the Vite dev server on a different port to avoid conflicts
+const client = spawn('npx', ['vite', '--host', '::', '--port', '3000'], {
   stdio: 'inherit',
   shell: true
 });

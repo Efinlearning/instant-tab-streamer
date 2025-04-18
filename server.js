@@ -23,7 +23,7 @@ wss.on('connection', (ws) => {
   ws.on('message', (message) => {
     // Forward the message to all connected clients except the sender
     for (const client of clients) {
-      if (client !== ws && client.readyState === WebSocketServer.OPEN) {
+      if (client !== ws && client.readyState === 1) { // WebSocket.OPEN = 1
         client.send(message);
       }
     }
@@ -34,6 +34,9 @@ wss.on('connection', (ws) => {
     console.log('Client disconnected');
     clients.delete(ws);
   });
+
+  // Send initial connection success message
+  ws.send(JSON.stringify({ type: 'connection-success' }));
 });
 
 // Start server
