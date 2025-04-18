@@ -17,39 +17,45 @@ function connectWebSocket() {
     return;
   }
 
-  socket = new WebSocket('ws://localhost:8080');
-  
-  socket.onopen = () => {
-    console.log('WebSocket connected');
-    chrome.action.setBadgeText({ text: 'ON' });
-    chrome.action.setBadgeBackgroundColor({ color: '#4CAF50' });
-    reconnectAttempts = 0;
+  try {
+    socket = new WebSocket('ws://localhost:8080');
     
-    // Auto-start capturing the current tab when connected
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs && tabs[0] && tabs[0].id) {
-        startCapture(tabs[0].id);
+    socket.onopen = () => {
+      console.log('WebSocket connected');
+      chrome.action.setBadgeText({ text: 'ON' });
+      chrome.action.setBadgeBackgroundColor({ color: '#4CAF50' });
+      reconnectAttempts = 0;
+      
+      // Auto-start capturing the current tab when connected
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (tabs && tabs[0] && tabs[0].id) {
+          startCapture(tabs[0].id);
+        }
+      });
+    };
+    
+    socket.onclose = () => {
+      console.log('WebSocket disconnected');
+      stopCapture();
+      chrome.action.setBadgeText({ text: 'OFF' });
+      chrome.action.setBadgeBackgroundColor({ color: '#F44336' });
+      
+      // Try to reconnect if not at max attempts
+      if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+        reconnectAttempts++;
+        console.log(`Attempting to reconnect (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
+        setTimeout(connectWebSocket, RECONNECT_DELAY);
       }
-    });
-  };
-  
-  socket.onclose = () => {
-    console.log('WebSocket disconnected');
-    stopCapture();
-    chrome.action.setBadgeText({ text: 'OFF' });
-    chrome.action.setBadgeBackgroundColor({ color: '#F44336' });
+    };
     
-    // Try to reconnect if not at max attempts
-    if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-      reconnectAttempts++;
-      console.log(`Attempting to reconnect (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
-      setTimeout(connectWebSocket, RECONNECT_DELAY);
-    }
-  };
-  
-  socket.onerror = (error) => {
-    console.error('WebSocket error:', error);
-  };
+    socket.onerror = (error) => {
+      console.error('WebSocket error:', error);
+    };
+  } catch (error) {
+    console.error('Error connecting to WebSocket:', error);
+    // Schedule a reconnect
+    setTimeout(connectWebSocket, RECONNECT_DELAY);
+  }
 }
 
 // Start tab capture
@@ -68,8 +74,8 @@ async function startCapture(tabId) {
 
     console.log('Attempting to capture tab...');
     
-    // Get tab media stream using chrome.tabCapture API
-    chrome.tabCapture.getMediaStream(
+    // Use the correct tabCapture API
+    chrome.tabCapture.captureTab(
       {
         video: true,
         audio: true,
