@@ -6,6 +6,7 @@
   "description": "Automatically captures the current tab and streams it to a web application",
   "permissions": [
     "tabs",
+    "tabCapture",
     "activeTab"
   ],
   "host_permissions": ["<all_urls>"],
