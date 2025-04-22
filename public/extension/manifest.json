@@ -1,25 +1,26 @@
-
 {
   "manifest_version": 3,
   "name": "Tab Stream Capture",
   "version": "1.0",
   "description": "Automatically captures the current tab and streams it to a web application",
-  "permissions": [
-    "tabs",
-    "tabCapture",
-    "activeTab"
-  ],
+  "permissions": ["tabs", "scripting", "activeTab"],
   "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"]
+    }
+  ],
   "action": {
     "default_icon": {
       "16": "icon16.png",
       "48": "icon48.png",
       "128": "icon128.png"
     }
-  },
-  "background": {
-    "service_worker": "background.js",
-    "type": "module"
   },
   "icons": {
     "16": "icon16.png",
