@@ -4,8 +4,35 @@ import http from 'http';
 
 // Create HTTP server
 const server = http.createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('WebSocket Server Running');
+  // Simple routing
+  if (req.url === '/health') {
+    // Health check endpoint
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ status: 'ok' }));
+  } else if (req.method === 'POST' && req.url === '/stream') {
+    // Handle stream data from fetch/XHR
+    console.log('Received stream data via HTTP POST');
+    let data = [];
+    
+    req.on('data', (chunk) => {
+      data.push(chunk);
+    });
+    
+    req.on('end', () => {
+      const buffer = Buffer.concat(data);
+      // Forward the media data to all connected WebSocket clients
+      for (const client of clients) {
+        if (client.readyState === 1) { // WebSocket.OPEN = 1
+          client.send(buffer);
+        }
+      }
+      res.writeHead(200);
+      res.end('Data received');
+    });
+  } else {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('WebSocket Server Running');
+  }
 });
 
 // Create WebSocket server
@@ -25,10 +52,13 @@ wss.on('connection', (ws) => {
   // Forward messages to all other clients
   ws.on('message', (message) => {
     try {
-      // Forward the message to all connected clients except the sender
-      for (const client of clients) {
-        if (client !== ws && client.readyState === 1) { // WebSocket.OPEN = 1
-          client.send(message);
+      // Check if the message is a string
+      if (typeof message === 'string' || message instanceof Buffer) {
+        // Forward the message to all connected clients except the sender
+        for (const client of clients) {
+          if (client !== ws && client.readyState === 1) { // WebSocket.OPEN = 1
+            client.send(message);
+          }
         }
       }
     } catch (error) {

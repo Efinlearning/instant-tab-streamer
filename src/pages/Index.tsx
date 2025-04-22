@@ -10,46 +10,95 @@ const Index = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const socketRef = useRef<WebSocket | null>(null);
+  const [reconnectAttempt, setReconnectAttempt] = useState(0);
   const { toast } = useToast();
 
+  const connectWebSocket = () => {
+    // Close existing connection if any
+    if (socketRef.current && socketRef.current.readyState !== WebSocket.CLOSED) {
+      socketRef.current.close();
+    }
+
+    try {
+      console.log('Attempting to connect WebSocket...');
+      const socket = new WebSocket("ws://localhost:8080");
+      socketRef.current = socket;
+
+      socket.onopen = () => {
+        console.log('WebSocket connected successfully');
+        setIsConnected(true);
+        setReconnectAttempt(0);
+        toast({
+          title: "Connected to server",
+          description: "Ready to receive tab stream",
+        });
+      };
+
+      socket.onclose = () => {
+        console.log('WebSocket connection closed');
+        setIsConnected(false);
+        setIsStreaming(false);
+        
+        // Only show toast on first disconnect, not during retry attempts
+        if (reconnectAttempt === 0) {
+          toast({
+            title: "Disconnected from server",
+            description: "WebSocket connection closed, attempting to reconnect...",
+            variant: "destructive",
+          });
+        }
+        
+        // Retry connection with increasing delay
+        if (reconnectAttempt < 5) {
+          const delay = Math.min(1000 * (reconnectAttempt + 1), 5000);
+          setTimeout(() => {
+            setReconnectAttempt(prev => prev + 1);
+            connectWebSocket();
+          }, delay);
+        }
+      };
+
+      socket.onerror = (error) => {
+        console.error("WebSocket error:", error);
+        if (reconnectAttempt === 0) {
+          toast({
+            title: "Connection error",
+            description: "Failed to connect to the streaming server. Make sure the server is running on port 8080.",
+            variant: "destructive",
+          });
+        }
+      };
+    } catch (error) {
+      console.error('Error creating WebSocket:', error);
+    }
+  };
+
+  // Initial connection
   useEffect(() => {
-    // Create WebSocket connection
-    const socket = new WebSocket("ws://localhost:8080");
-    socketRef.current = socket;
-
-    socket.onopen = () => {
-      setIsConnected(true);
-      toast({
-        title: "Connected to server",
-        description: "Ready to receive tab stream",
-      });
-    };
-
-    socket.onclose = () => {
-      setIsConnected(false);
-      setIsStreaming(false);
-      toast({
-        title: "Disconnected from server",
-        description: "WebSocket connection closed",
-        variant: "destructive",
-      });
-    };
-
-    socket.onerror = (error) => {
-      console.error("WebSocket error:", error);
-      toast({
-        title: "Connection error",
-        description: "Failed to connect to the streaming server",
-        variant: "destructive",
-      });
-    };
-
+    connectWebSocket();
+    
     return () => {
-      if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.close();
+      if (socketRef.current && socketRef.current.readyState !== WebSocket.CLOSED) {
+        socketRef.current.close();
       }
     };
   }, [toast]);
+
+  // Handle reconnect attempts
+  useEffect(() => {
+    if (reconnectAttempt > 0) {
+      console.log(`Reconnect attempt ${reconnectAttempt}/5`);
+    }
+  }, [reconnectAttempt]);
+
+  const handleManualReconnect = () => {
+    setReconnectAttempt(0);
+    connectWebSocket();
+    toast({
+      title: "Reconnecting",
+      description: "Attempting to reconnect to the streaming server...",
+    });
+  };
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
@@ -76,19 +125,21 @@ const Index = () => {
           <p className="text-gray-400 mb-4">
             Make sure you have the Chrome Extension installed and activated on a tab.
           </p>
-          <Button
-            variant="default"
-            className="bg-blue-600 hover:bg-blue-700"
-            disabled={!isConnected}
-            onClick={() => {
-              toast({
-                title: "Extension Information",
-                description: "Check the extension popup for status and controls",
-              });
-            }}
-          >
-            Extension Info
-          </Button>
+          <div className="flex justify-center gap-4">
+            <Button
+              variant="default"
+              className="bg-blue-600 hover:bg-blue-700"
+              onClick={handleManualReconnect}
+            >
+              Reconnect to Server
+            </Button>
+            
+            {!isConnected && reconnectAttempt > 0 && (
+              <div className="mt-2 text-yellow-400">
+                Reconnect attempt {reconnectAttempt}/5
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
