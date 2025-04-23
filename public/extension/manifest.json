@@ -3,7 +3,7 @@
   "name": "Tab Stream Capture",
   "version": "1.0",
   "description": "Automatically captures the current tab and streams it to a web application",
-  "permissions": ["tabs", "scripting", "activeTab"],
+  "permissions": ["tabs", "scripting", "activeTab", "tabCapture"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"
