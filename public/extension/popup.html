@@ -1,0 +1,131 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Tab Stream Capture</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      width: 300px;
+      padding: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      background-color: #1e293b;
+      color: #e2e8f0;
+    }
+    h1 {
+      font-size: 18px;
+      margin-bottom: 16px;
+      text-align: center;
+      font-weight: 600;
+      background: linear-gradient(to right, #3b82f6, #6366f1);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    .status {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 16px;
+      padding: 12px;
+      border-radius: 8px;
+      background-color: #334155;
+    }
+    .status-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .status-indicator {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 8px;
+      border-radius: 9999px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .connected {
+      background-color: #10b981;
+      color: white;
+    }
+    .disconnected {
+      background-color: #ef4444;
+      color: white;
+    }
+    .active {
+      background-color: #3b82f6;
+      color: white;
+    }
+    .inactive {
+      background-color: #475569;
+      color: white;
+    }
+    button {
+      width: 100%;
+      padding: 10px;
+      margin-top: 8px;
+      border: none;
+      border-radius: 6px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    .start {
+      background-color: #3b82f6;
+      color: white;
+    }
+    .start:hover {
+      background-color: #2563eb;
+    }
+    .stop {
+      background-color: #ef4444;
+      color: white;
+    }
+    .stop:hover {
+      background-color: #dc2626;
+    }
+    .connect {
+      background-color: #10b981;
+      color: white;
+    }
+    .connect:hover {
+      background-color: #059669;
+    }
+    .disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .info {
+      margin-top: 16px;
+      font-size: 12px;
+      color: #94a3b8;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <h1>Tab Stream Capture</h1>
+  
+  <div class="status">
+    <div class="status-item">
+      <span>WebSocket:</span>
+      <span id="connection-status" class="status-indicator disconnected">Disconnected</span>
+    </div>
+    <div class="status-item">
+      <span>Stream:</span>
+      <span id="stream-status" class="status-indicator inactive">Inactive</span>
+    </div>
+  </div>
+  
+  <button id="connect-btn" class="connect">Connect to Server</button>
+  <button id="start-btn" class="start disabled">Start Streaming</button>
+  <button id="stop-btn" class="stop disabled">Stop Streaming</button>
+  
+  <p class="info">
+    View your stream at the web application.
+  </p>
+  
+  <script src="popup.js"></script>
+</body>
+</html>

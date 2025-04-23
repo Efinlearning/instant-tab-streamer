@@ -1,229 +1,108 @@
-
-// Global variables to track state
+let socket = null;
 let streamActive = false;
-let mediaRecorder = null;
-let captureStream = null;
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 5;
 const RECONNECT_DELAY = 3000;
-let activeTabId = null;
-let serverConnected = false;
 
-// Initialize connection to server
-function connectToServer() {
-  console.log('Attempting to connect to server...');
-  
+function connectWebSocket() {
+  if (socket && socket.readyState === WebSocket.OPEN) return;
+
   try {
-    // Use fetch to check if server is available
-    fetch('http://localhost:8080/health')
-      .then(response => {
-        if (response.ok) {
-          console.log('Server is available');
-          serverConnected = true;
-          chrome.action.setBadgeText({ text: 'ON' });
-          chrome.action.setBadgeBackgroundColor({ color: '#4CAF50' });
-          
-          // After confirming server is available, attempt to start capture
-          chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-            if (tabs && tabs[0] && tabs[0].id) {
-              activeTabId = tabs[0].id;
-              startCapture(tabs[0].id);
-            }
-          });
-        }
-      })
-      .catch(error => {
-        console.error('Server connection error:', error);
-        serverConnected = false;
-        chrome.action.setBadgeText({ text: 'ERR' });
-        chrome.action.setBadgeBackgroundColor({ color: '#F44336' });
-        
-        // Retry connection
-        if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-          reconnectAttempts++;
-          setTimeout(connectToServer, RECONNECT_DELAY);
+    socket = new WebSocket('ws://localhost:8080');
+
+    socket.onopen = () => {
+      console.log('WebSocket connected');
+      chrome.action.setBadgeText({ text: 'ON' });
+      chrome.action.setBadgeBackgroundColor({ color: '#4CAF50' });
+      reconnectAttempts = 0;
+
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (tabs && tabs[0] && tabs[0].id) {
+          sendStartCaptureMessage(tabs[0].id);
         }
       });
+    };
+
+    socket.onclose = () => {
+      console.log('WebSocket disconnected');
+      streamActive = false;
+      chrome.action.setBadgeText({ text: 'OFF' });
+      chrome.action.setBadgeBackgroundColor({ color: '#F44336' });
+
+      if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+        reconnectAttempts++;
+        setTimeout(connectWebSocket, RECONNECT_DELAY);
+      }
+    };
+
+    socket.onerror = (error) => {
+      console.error('WebSocket error:', error);
+    };
   } catch (err) {
-    console.error('Connection attempt error:', err);
-    setTimeout(connectToServer, RECONNECT_DELAY);
+    console.error('WebSocket connection error:', err);
+    setTimeout(connectWebSocket, RECONNECT_DELAY);
   }
 }
 
-// Function to start capturing the tab
-function startCapture(tabId) {
-  console.log('Starting capture for tab:', tabId);
-  
-  if (mediaRecorder && mediaRecorder.state !== "inactive") {
-    mediaRecorder.stop();
-  }
-  
-  if (captureStream) {
-    captureStream.getTracks().forEach(track => track.stop());
-    captureStream = null;
-  }
-  
-  try {
-    // Notify content script first (even though capture happens in background)
-    notifyContentScript(tabId, "start-capture");
-    
-    // Use the tabCapture API to capture the tab
-    chrome.tabCapture.capture({
-      audio: true,
-      video: true,
-      videoConstraints: {
-        mandatory: {
-          minWidth: 1280,
-          minHeight: 720,
-          maxWidth: 1920,
-          maxHeight: 1080
-        }
-      }
-    }, (stream) => {
-      if (!stream) {
-        console.error('Failed to capture tab - stream is null');
-        chrome.action.setBadgeText({ text: 'ERR' });
-        return;
-      }
-      
-      // Store the stream
-      captureStream = stream;
-      
-      // Create a media recorder
-      mediaRecorder = new MediaRecorder(stream, {
-        mimeType: 'video/webm;codecs=vp9',
-        videoBitsPerSecond: 2500000
-      });
-      
-      // Handle data available event
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          // Send the data to the content script
-          chrome.tabs.sendMessage(tabId, {
-            type: "capture-stream-data",
-            data: event.data
-          });
-        }
-      };
-      
-      // Handle errors
-      mediaRecorder.onerror = (event) => {
-        console.error('MediaRecorder error:', event);
-        streamActive = false;
-        chrome.action.setBadgeText({ text: 'ERR' });
-      };
-      
-      // Start recording
-      mediaRecorder.start(100); // Collect 100ms chunks
-      
-      // Update status
+function sendStartCaptureMessage(tabId) {
+  chrome.tabs.sendMessage(tabId, { type: "start-capture" }, (response) => {
+    if (chrome.runtime.lastError) {
+      console.error("Message error:", chrome.runtime.lastError.message);
+      return;
+    }
+
+    if (response && response.success) {
       streamActive = true;
       chrome.action.setBadgeText({ text: 'REC' });
       chrome.action.setBadgeBackgroundColor({ color: '#F44336' });
-      console.log('Tab capture started successfully');
-    });
-  } catch (error) {
-    console.error('Error starting capture:', error);
-    chrome.action.setBadgeText({ text: 'ERR' });
-  }
+
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: 'stream-started', tabId }));
+      }
+    }
+  });
 }
 
-// Function to stop capturing
-function stopCapture() {
-  console.log('Stopping capture');
-  
-  if (mediaRecorder && mediaRecorder.state !== "inactive") {
-    mediaRecorder.stop();
-  }
-  
-  if (captureStream) {
-    captureStream.getTracks().forEach(track => track.stop());
-    captureStream = null;
-  }
-  
+function sendStopCaptureMessage(tabId) {
+  chrome.tabs.sendMessage(tabId, { type: "stop-capture" });
   streamActive = false;
   chrome.action.setBadgeText({ text: 'ON' });
   chrome.action.setBadgeBackgroundColor({ color: '#4CAF50' });
-  
-  if (activeTabId) {
-    notifyContentScript(activeTabId, "stop-capture");
+
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ type: 'stream-stopped', tabId }));
   }
 }
 
-// Helper function to send messages to content script
-function notifyContentScript(tabId, messageType) {
-  chrome.tabs.sendMessage(tabId, { type: messageType }, (response) => {
-    if (chrome.runtime.lastError) {
-      console.error("Message error:", chrome.runtime.lastError.message);
-      // If content script isn't ready, we might need to inject it
-      injectContentScriptIfNeeded(tabId);
-      return;
-    }
-    
-    console.log(`Content script notified: ${messageType}, response:`, response);
-  });
-}
+connectWebSocket();
 
-// Helper to inject content script if needed
-function injectContentScriptIfNeeded(tabId) {
-  chrome.scripting.executeScript({
-    target: { tabId: tabId },
-    files: ['content.js']
-  }).then(() => {
-    console.log('Content script injected');
-    // Try sending message again after injection
-    setTimeout(() => {
-      if (streamActive) {
-        notifyContentScript(tabId, "start-capture");
-      }
-    }, 200);
-  }).catch(err => {
-    console.error('Failed to inject content script:', err);
-  });
-}
-
-// Listen for clicks on the extension icon
 chrome.action.onClicked.addListener((tab) => {
-  activeTabId = tab.id;
   if (streamActive) {
-    stopCapture();
+    sendStopCaptureMessage(tab.id);
   } else {
-    startCapture(tab.id);
+    sendStartCaptureMessage(tab.id);
   }
 });
 
-// Listen for tab activation changes
-chrome.tabs.onActivated.addListener((activeInfo) => {
-  activeTabId = activeInfo.tabId;
+chrome.tabs.onActivated.addListener(() => {
   if (streamActive) {
-    stopCapture();
-    setTimeout(() => {
-      startCapture(activeInfo.tabId);
-    }, 500);
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs && tabs[0] && tabs[0].id) {
+        sendStopCaptureMessage(tabs[0].id);
+        sendStartCaptureMessage(tabs[0].id);
+      }
+    });
   }
 });
 
-// Listen for content script messages
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === "content-script-ready") {
-    console.log('Content script is ready in tab:', sender.tab.id);
-    if (streamActive && sender.tab.id === activeTabId) {
-      // Restart capture in this tab if needed
-      startCapture(sender.tab.id);
-    }
-    sendResponse({ received: true });
-  }
-  return true;
-});
-
-// Initial connection
-connectToServer();
-
-// Periodic connection check and capture state
 setInterval(() => {
-  if (!serverConnected) {
-    connectToServer();
-  } else if (!streamActive && activeTabId) {
-    startCapture(activeTabId);
+  if (!socket || socket.readyState !== WebSocket.OPEN) {
+    connectWebSocket();
+  } else if (!streamActive) {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs && tabs[0] && tabs[0].id) {
+        sendStartCaptureMessage(tabs[0].id);
+      }
+    });
   }
 }, 5000);
