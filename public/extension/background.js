@@ -1,9 +1,13 @@
+// background.js
 let socket = null;
 let streamActive = false;
+let mediaRecorder = null;
+let captureStream = null;
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 5;
 const RECONNECT_DELAY = 3000;
 
+// WebSocket Connection Management
 function connectWebSocket() {
   if (socket && socket.readyState === WebSocket.OPEN) return;
 
@@ -12,23 +16,23 @@ function connectWebSocket() {
 
     socket.onopen = () => {
       console.log('WebSocket connected');
-      chrome.action.setBadgeText({ text: 'ON' });
-      chrome.action.setBadgeBackgroundColor({ color: '#4CAF50' });
+      updateBadgeStatus('connected');
       reconnectAttempts = 0;
-
-      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        if (tabs && tabs[0] && tabs[0].id) {
-          sendStartCaptureMessage(tabs[0].id);
-        }
-      });
+      
+      // Start capture if we're reconnecting
+      if (streamActive) {
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+          if (tabs[0]?.id) {
+            startTabCapture(tabs[0].id);
+          }
+        });
+      }
     };
 
     socket.onclose = () => {
       console.log('WebSocket disconnected');
-      streamActive = false;
-      chrome.action.setBadgeText({ text: 'OFF' });
-      chrome.action.setBadgeBackgroundColor({ color: '#F44336' });
-
+      updateBadgeStatus('disconnected');
+      
       if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
         reconnectAttempts++;
         setTimeout(connectWebSocket, RECONNECT_DELAY);
@@ -37,6 +41,7 @@ function connectWebSocket() {
 
     socket.onerror = (error) => {
       console.error('WebSocket error:', error);
+      updateBadgeStatus('error');
     };
   } catch (err) {
     console.error('WebSocket connection error:', err);
@@ -44,65 +49,123 @@ function connectWebSocket() {
   }
 }
 
-function sendStartCaptureMessage(tabId) {
-  chrome.tabs.sendMessage(tabId, { type: "start-capture" }, (response) => {
-    if (chrome.runtime.lastError) {
-      console.error("Message error:", chrome.runtime.lastError.message);
+// Tab Capture Functions
+function startTabCapture(tabId) {
+  chrome.tabCapture.capture({
+    audio: true,
+    video: true,
+    videoConstraints: {
+      mandatory: {
+        minWidth: 1280,
+        minHeight: 720,
+        maxWidth: 1920,
+        maxHeight: 1080
+      }
+    }
+  }, (stream) => {
+    if (!stream) {
+      console.error("Failed to capture tab");
       return;
     }
 
-    if (response && response.success) {
-      streamActive = true;
-      chrome.action.setBadgeText({ text: 'REC' });
-      chrome.action.setBadgeBackgroundColor({ color: '#F44336' });
+    captureStream = stream;
+    mediaRecorder = new MediaRecorder(stream, {
+      mimeType: 'video/webm;codecs=vp9',
+      videoBitsPerSecond: 2500000
+    });
 
-      if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({ type: 'stream-started', tabId }));
+    mediaRecorder.ondataavailable = (event) => {
+      if (socket?.readyState === WebSocket.OPEN && event.data.size > 0) {
+        socket.send(event.data);
       }
+    };
+
+    mediaRecorder.onerror = (error) => {
+      console.error('MediaRecorder error:', error);
+      stopTabCapture();
+    };
+
+    mediaRecorder.start(100); // Send data every 100ms
+    streamActive = true;
+    updateBadgeStatus('recording');
+    
+    // Notify the server
+    if (socket?.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ 
+        type: 'stream-status', 
+        status: 'started',
+        tabId
+      }));
     }
   });
 }
 
-function sendStopCaptureMessage(tabId) {
-  chrome.tabs.sendMessage(tabId, { type: "stop-capture" });
-  streamActive = false;
-  chrome.action.setBadgeText({ text: 'ON' });
-  chrome.action.setBadgeBackgroundColor({ color: '#4CAF50' });
+function stopTabCapture() {
+  if (mediaRecorder && mediaRecorder.state !== "inactive") {
+    mediaRecorder.stop();
+  }
 
-  if (socket && socket.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify({ type: 'stream-stopped', tabId }));
+  if (captureStream) {
+    captureStream.getTracks().forEach(track => track.stop());
+    captureStream = null;
+  }
+
+  streamActive = false;
+  updateBadgeStatus('connected');
+  
+  // Notify the server
+  if (socket?.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ 
+      type: 'stream-status', 
+      status: 'stopped'
+    }));
   }
 }
 
-connectWebSocket();
+// UI Helpers
+function updateBadgeStatus(status) {
+  switch (status) {
+    case 'connected':
+      chrome.action.setBadgeText({ text: 'ON' });
+      chrome.action.setBadgeBackgroundColor({ color: '#4CAF50' });
+      break;
+    case 'disconnected':
+      chrome.action.setBadgeText({ text: 'OFF' });
+      chrome.action.setBadgeBackgroundColor({ color: '#F44336' });
+      break;
+    case 'recording':
+      chrome.action.setBadgeText({ text: 'REC' });
+      chrome.action.setBadgeBackgroundColor({ color: '#FF9800' });
+      break;
+    case 'error':
+      chrome.action.setBadgeText({ text: 'ERR' });
+      chrome.action.setBadgeBackgroundColor({ color: '#F44336' });
+      break;
+  }
+}
 
+// Event Listeners
 chrome.action.onClicked.addListener((tab) => {
   if (streamActive) {
-    sendStopCaptureMessage(tab.id);
+    stopTabCapture();
   } else {
-    sendStartCaptureMessage(tab.id);
+    startTabCapture(tab.id);
   }
 });
 
-chrome.tabs.onActivated.addListener(() => {
+chrome.tabs.onActivated.addListener((activeInfo) => {
   if (streamActive) {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs && tabs[0] && tabs[0].id) {
-        sendStopCaptureMessage(tabs[0].id);
-        sendStartCaptureMessage(tabs[0].id);
-      }
-    });
+    stopTabCapture();
+    startTabCapture(activeInfo.tabId);
   }
 });
 
+// Health Check
 setInterval(() => {
   if (!socket || socket.readyState !== WebSocket.OPEN) {
     connectWebSocket();
-  } else if (!streamActive) {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs && tabs[0] && tabs[0].id) {
-        sendStartCaptureMessage(tabs[0].id);
-      }
-    });
   }
 }, 5000);
+
+// Initial connection
+connectWebSocket();
